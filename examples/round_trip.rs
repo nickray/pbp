@@ -1,24 +1,45 @@
-extern crate rand;
-extern crate sha2;
 extern crate ed25519_dalek as dalek;
 extern crate pbp;
+extern crate rand;
+extern crate sha2;
 
-use rand::OsRng;
-use sha2::{Sha256, Sha512};
+use std::time::SystemTime;
+
 use dalek::Keypair;
-use pbp::{PgpKey, PgpSig, SigType, KeyFlags};
+use failure::Error;
+use pbp::{KeyFlags, PgpKey, PgpSig, SigType};
+use rand::rngs::OsRng;
+use sha2::Digest;
+use sha2::{Sha256, Sha512};
 
 const DATA: &[u8] = b"How will I ever get out of this labyrinth?";
 
-fn main() {
+fn main() -> Result<(), Error> {
     let mut cspring = OsRng::new().unwrap();
-    let keypair = Keypair::generate::<Sha512>(&mut cspring);
-
-    let key = PgpKey::from_dalek::<Sha256, Sha512>(&keypair, KeyFlags::SIGN, "withoutboats");
-    let sig = PgpSig::from_dalek::<Sha256, Sha512>(&keypair, DATA, key.fingerprint(), SigType::BinaryDocument);
-    if sig.verify_dalek::<Sha256, Sha512>(DATA, &keypair.public) {
+    let keypair = Keypair::generate::<Sha512, _>(&mut cspring);
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs();
+    let key = PgpKey::from_dalek::<sha2::Sha256, sha2::Sha512>(
+        &keypair,
+        KeyFlags::NONE,
+        timestamp as u32,
+        "withoutboats",
+    );
+    let sig = PgpSig::from_dalek::<Sha256, Sha512>(
+        &keypair,
+        DATA,
+        key.fingerprint(),
+        SigType::BinaryDocument,
+        timestamp as u32,
+    );
+    if sig.verify_dalek::<Sha256, Sha512, _>(&keypair.public, |hasher| {
+        hasher.input(DATA);
+    }) {
         println!("Verified successfully.");
     } else {
         println!("Could not verify.");
     }
+
+    Ok(())
 }
