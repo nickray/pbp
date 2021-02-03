@@ -1,9 +1,9 @@
 // This module implements the ASCII armoring required by the OpenPGP
 // specification, converting binary PGP datagrams into ASCII data.
+use core::convert::TryInto;
 use std::fmt;
 
 use base64;
-use byteorder::{BigEndian, ByteOrder};
 
 use crate::PgpError;
 use crate::PgpError::InvalidAsciiArmor;
@@ -53,10 +53,7 @@ pub fn remove_ascii_armor(
     }
     let mut cksum = [0; 4];
     base64::decode_config_slice(&cksum_line[1..], base64::URL_SAFE, &mut cksum[1..])?;
-    let mut cksum_buf = [0; 4];
-    BigEndian::write_u32(&mut cksum_buf, checksum_crc24(&data));
-
-    if BigEndian::read_u32(&cksum[..]) != checksum_crc24(&data) {
+    if u32::from_be_bytes(cksum[..].try_into().unwrap()) != checksum_crc24(&data) {
         return Err(InvalidAsciiArmor);
     }
 
@@ -82,8 +79,7 @@ pub fn ascii_armor(
 
     // Checksum
     let cksum = checksum_crc24(data);
-    let mut cksum_buf = [0; 4];
-    BigEndian::write_u32(&mut cksum_buf, cksum);
+    let cksum_buf = cksum.to_be_bytes();
     f.write_str(&base64::encode(&cksum_buf[1..4]))?;
 
     // Footer Line

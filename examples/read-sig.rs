@@ -1,14 +1,7 @@
-extern crate ed25519_dalek as dalek;
-extern crate pbp;
-extern crate rand;
-extern crate sha2;
-
-use std::io::{self, BufRead};
-
-use pbp::PgpSig;
+use std::io::BufRead as _;
 
 fn main() {
-    let stdin = io::stdin();
+    let stdin = std::io::stdin();
     let mut stdin = stdin.lock();
 
     let mut armor = String::new();
@@ -30,7 +23,7 @@ fn main() {
         }
     }
 
-    if PgpSig::from_ascii_armor(&armor).ok().is_some() {
+    if pbp::PgpSig::from_ascii_armor(&armor).ok().is_some() {
         println!("Valid PGP Signature");
     }
 }

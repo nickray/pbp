@@ -1,20 +1,12 @@
-extern crate ed25519_dalek as dalek;
-extern crate pbp;
-extern crate rand;
-extern crate sha2;
-
 use std::time::SystemTime;
 
-use dalek::Keypair;
-use failure::Error;
-use pbp::{KeyFlags, PgpKey, PgpSig, SigType};
+use pbp::{dalek::Keypair, KeyFlags, PgpKey, PgpSig, SigType};
 use rand::rngs::OsRng;
-use sha2::Digest;
-use sha2::{Sha256, Sha512};
+use sha2::{Digest as _, Sha256, Sha512};
 
 const DATA: &[u8] = b"How will I ever get out of this labyrinth?";
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<(), anyhow::Error> {
     let keypair = Keypair::generate(&mut OsRng);
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?

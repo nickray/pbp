@@ -10,14 +10,14 @@ repository = "https://github.com/withoutboats/pbp"
 
 [dependencies]
 base64 = "0.13"
-byteorder = "1"
-digest = "0.9"
-sha1 = "0.6"
-typenum = "1.11"
-failure = "0.1"
 bitflags = "1.2"
+digest = "0.9"
+# can't update to 0.8, ed25519-dalek is on 0.7
 rand = "0.7"
+sha1 = "0.6"
 sha2 = "0.9"
+thiserror = "1"
+typenum = "1.11"
 
 [dependencies.ed25519-dalek]
 version = "1"
@@ -27,6 +27,7 @@ optional = true
 dalek = ["ed25519-dalek"]
 
 [dev-dependencies]
+anyhow = "1"
 ed25519-dalek = "1"
 
 [[example]]
@@ -35,16 +36,15 @@ name = "print"
 path = "examples/print.rs"
 
 [[example]]
-required-features = ["dalek"]
-name = "read_sig"
-path = "examples/read_sig.rs"
+name = "read-sig"
+path = "examples/read-sig.rs"
 
 [[example]]
 required-features = ["dalek"]
-name = "round_trip"
-path = "examples/round_trip.rs"
+name = "round-trip"
+path = "examples/round-trip.rs"
 
 [[example]]
 required-features = ["dalek"]
-name = "verify_sig"
-path = "examples/verify_sig.rs"
+name = "verify-sig"
+path = "examples/verify-sig.rs"

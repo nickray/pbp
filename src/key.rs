@@ -1,9 +1,10 @@
+use core::convert::TryInto;
+
 use std::fmt::{self, Debug, Display};
 use std::ops::Range;
 use std::str::FromStr;
 use std::u16;
 
-use byteorder::{BigEndian, ByteOrder};
 use digest::Digest;
 use sha1::Sha1;
 use typenum::U32;
@@ -80,7 +81,7 @@ impl PgpKey {
         let sig_data = {
             let mut data = Vec::from(&data[key_packet_range]);
             data.extend(&[0xb4]);
-            data.extend(&bigendian_u32(user_id.len() as u32));
+            data.extend(&(user_id.len() as u32).to_be_bytes());
             data.extend(user_id.as_bytes());
             data
         };
@@ -228,7 +229,7 @@ impl FromStr for PgpKey {
 fn write_public_key_packet(data: &mut Vec<u8>, key: &[u8], unix_time: u32) -> Range<usize> {
     write_packet(data, 6, |packet| {
         packet.push(4); // packet version #4
-        packet.extend(&bigendian_u32(unix_time));
+        packet.extend(&unix_time.to_be_bytes());
         packet.push(22); // algorithm id #22 (edDSA)
 
         packet.extend(CURVE);
@@ -261,14 +262,14 @@ fn find_public_key_packet(data: &[u8]) -> Result<(&[u8], usize), PgpError> {
             if data.len() < 3 {
                 return Err(PgpError::InvalidPacketHeader);
             }
-            let len = BigEndian::read_u16(&data[1..3]) as usize;
+            let len = u16::from_be_bytes(data[1..3].try_into().unwrap()) as usize;
             (3, len)
         }
         Some(&0x9a) => {
             if data.len() < 5 {
                 return Err(PgpError::InvalidPacketHeader);
             }
-            let len = BigEndian::read_u32(&data[1..5]) as usize;
+            let len = u32::from_be_bytes(data[1..5].try_into().unwrap()) as usize;
             if len > u16::MAX as usize {
                 return Err(PgpError::UnsupportedPacketLength);
             }

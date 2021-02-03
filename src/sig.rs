@@ -1,8 +1,8 @@
+use core::convert::TryInto;
 use std::fmt::{self, Debug, Display};
 use std::str::FromStr;
 use std::u16;
 
-use byteorder::{BigEndian, ByteOrder};
 use digest::Digest;
 use typenum::U32;
 
@@ -93,7 +93,7 @@ impl PgpSig {
 
                 // timestamp
                 write_single_subpacket(hashed_subpackets, 2, |packet| {
-                    packet.extend(&bigendian_u32(unix_time))
+                    packet.extend(&unix_time.to_be_bytes())
                 });
 
                 for &SubPacket { tag, data } in subpackets {
@@ -109,7 +109,7 @@ impl PgpSig {
                 hasher.update(&packet[3..]);
 
                 hasher.update(&[0x04, 0xff]);
-                hasher.update(&bigendian_u32((packet.len() - 3) as u32));
+                hasher.update(&((packet.len() - 3) as u32).to_be_bytes());
 
                 hasher.finalize()
             };
@@ -155,7 +155,7 @@ impl PgpSig {
 
     /// Get the portion of this signature hashed into the signed data.
     pub fn hashed_section(&self) -> &[u8] {
-        let subpackets_len = BigEndian::read_u16(&self.data[7..9]) as usize;
+        let subpackets_len = u16::from_be_bytes(self.data[7..9].try_into().unwrap()) as usize;
         &self.data[3..(subpackets_len + 9)]
     }
 
@@ -217,7 +217,7 @@ impl PgpSig {
             hasher.update(hashed_section);
 
             hasher.update(&[0x04, 0xff]);
-            hasher.update(&bigendian_u32(hashed_section.len() as u32));
+            hasher.update(&(hashed_section.len() as u32).to_be_bytes());
 
             hasher.finalize()
         };
@@ -304,14 +304,14 @@ fn find_signature_packet(data: &[u8]) -> Result<(Vec<u8>, &[u8]), PgpError> {
             if data.len() < 3 {
                 return Err(PgpError::InvalidPacketHeader);
             }
-            let len = BigEndian::read_u16(&data[1..3]);
+            let len = u16::from_be_bytes(data[1..3].try_into().unwrap());
             (3, len as usize)
         }
         Some(&0x8a) => {
             if data.len() < 5 {
                 return Err(PgpError::InvalidPacketHeader);
             }
-            let len = BigEndian::read_u32(&data[1..5]);
+            let len = u32::from_be_bytes(data[1..5].try_into().unwrap());
             if len > u16::MAX as u32 {
                 return Err(PgpError::UnsupportedPacketLength);
             }
@@ -330,10 +330,8 @@ fn find_signature_packet(data: &[u8]) -> Result<(Vec<u8>, &[u8]), PgpError> {
         Ok((data.to_owned(), packet))
     } else {
         let mut vec = Vec::with_capacity(3 + len);
-        let len = bigendian_u16(len as u16);
         vec.push(0x89);
-        vec.push(len[0]);
-        vec.push(len[1]);
+        vec.extend(&(len as u16).to_be_bytes());
         vec.extend(packet.iter().cloned());
         Ok((vec, packet))
     }
@@ -348,12 +346,12 @@ fn has_correct_structure(packet: &[u8]) -> Result<(), PgpError> {
         return Err(PgpError::UnsupportedSignaturePacket);
     }
 
-    let hashed_len = BigEndian::read_u16(&packet[4..6]) as usize;
+    let hashed_len = u16::from_be_bytes(packet[4..6].try_into().unwrap()) as usize;
     if packet.len() < hashed_len + 8 {
         return Err(PgpError::UnsupportedSignaturePacket);
     }
 
-    let unhashed_len = BigEndian::read_u16(&packet[(hashed_len + 6)..][..2]) as usize;
+    let unhashed_len = u16::from_be_bytes(packet[(hashed_len + 6)..][..2].try_into().unwrap()) as usize;
     if packet.len() != unhashed_len + hashed_len + 78 {
         return Err(PgpError::UnsupportedSignaturePacket);
     }
@@ -362,7 +360,7 @@ fn has_correct_structure(packet: &[u8]) -> Result<(), PgpError> {
 }
 
 fn has_correct_hashed_subpackets(packet: &[u8]) -> Result<(), PgpError> {
-    let hashed_len = BigEndian::read_u16(&packet[4..6]) as usize;
+    let hashed_len = u16::from_be_bytes(packet[4..6].try_into().unwrap()) as usize;
     if hashed_len < 23 {
         return Err(PgpError::MissingFingerprintSubpacket);
     }

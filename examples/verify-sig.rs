@@ -1,12 +1,7 @@
-extern crate pbp;
-extern crate sha2;
-
-use std::env;
-use std::fs;
-use std::path::PathBuf;
+use std::{env, fs, path::PathBuf};
 
 use pbp::{PgpKey, PgpSig};
-use sha2::Digest;
+use sha2::Digest as _;
 use sha2::{Sha256, Sha512};
 
 fn main() {
