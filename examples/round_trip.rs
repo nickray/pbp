@@ -15,8 +15,7 @@ use sha2::{Sha256, Sha512};
 const DATA: &[u8] = b"How will I ever get out of this labyrinth?";
 
 fn main() -> Result<(), Error> {
-    let mut cspring = OsRng::new().unwrap();
-    let keypair = Keypair::generate::<Sha512, _>(&mut cspring);
+    let keypair = Keypair::generate(&mut OsRng);
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_secs();
@@ -34,7 +33,7 @@ fn main() -> Result<(), Error> {
         timestamp as u32,
     );
     if sig.verify_dalek::<Sha256, Sha512, _>(&keypair.public, |hasher| {
-        hasher.input(DATA);
+        hasher.update(DATA);
     }) {
         println!("Verified successfully.");
     } else {

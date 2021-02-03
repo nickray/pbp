@@ -21,7 +21,7 @@ fn main() {
     let key = PgpKey::from_ascii_armor(&key).unwrap();
 
     if sig.verify_dalek::<Sha256, Sha512, _>(&key.to_dalek().unwrap(), |hasher| {
-        hasher.input(&data);
+        hasher.update(&data);
     }) {
         println!("Verified signature.");
     } else {

@@ -12,8 +12,7 @@ use rand::rngs::OsRng;
 use sha2::{Sha256, Sha512};
 
 fn main() -> Result<(), Error> {
-    let mut cspring = OsRng::new().unwrap();
-    let keypair = Keypair::generate::<Sha512, _>(&mut cspring);
+    let keypair = Keypair::generate(&mut OsRng);
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_secs();

@@ -180,12 +180,13 @@ impl PgpKey {
         Sha256: Digest<OutputSize = U32> + Default,
         Sha512: Digest<OutputSize = U64> + Default,
     {
+        use crate::dalek::Signer as _;
         PgpKey::new::<Sha256, _>(
             keypair.public.as_bytes(),
             flags,
             user_id,
             unix_time,
-            |data| keypair.sign::<Sha512>(data).to_bytes(),
+            |data| keypair.sign(data).to_bytes(),
         )
     }
 
