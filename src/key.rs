@@ -6,13 +6,10 @@ use std::str::FromStr;
 use std::u16;
 
 use digest::Digest;
-use sha1::Sha1;
 use typenum::U32;
 
 #[cfg(feature = "dalek")]
-use ed25519_dalek as dalek;
-#[cfg(feature = "dalek")]
-use typenum::U64;
+use crate::dalek;
 
 use crate::ascii_armor::{ascii_armor, remove_ascii_armor};
 use crate::packet::*;
@@ -34,7 +31,7 @@ const CURVE: &[u8] = &[0x09, 0x2b, 0x06, 0x01, 0x04, 0x01, 0xda, 0x47, 0x0f, 0x0
 /// formatted key is expected.
 ///
 /// This type implements Display by ASCII armoring the public key data.
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct PgpKey {
     data: Vec<u8>,
 }
@@ -59,22 +56,22 @@ impl PgpKey {
     ///
     /// This will panic if your key is not 32 bits of data. It will not
     /// otherwise verify that your key is a valid ed25519 key.
-    pub fn new<Sha256, F>(
-        key: &[u8],
+    pub fn new<Sha256, Signer>(
+        public_key: &[u8],
         flags: KeyFlags,
         user_id: &str,
         unix_time: u32,
-        sign: F,
+        sign: Signer,
     ) -> PgpKey
     where
         Sha256: Digest<OutputSize = U32>,
-        F: Fn(&[u8]) -> Signature,
+        Signer: Fn(&[u8]) -> Signature,
     {
-        assert!(key.len() == 32);
+        assert!(public_key.len() == 32);
 
         let mut data = Vec::with_capacity(user_id.len() + 180);
 
-        let key_packet_range = write_public_key_packet(&mut data, key, unix_time);
+        let key_packet_range = write_public_key_packet(&mut data, public_key, unix_time);
         let fingerprint = fingerprint(&data[key_packet_range.clone()]);
         write_user_id_packet(&mut data, user_id);
 
@@ -171,7 +168,7 @@ impl PgpKey {
 
     #[cfg(feature = "dalek")]
     /// Create a PgpKey from a dalek Keypair and a user_id string.
-    pub fn from_dalek<Sha256, Sha512>(
+    pub fn from_dalek<Sha256>(
         keypair: &dalek::Keypair,
         flags: KeyFlags,
         unix_time: u32,
@@ -179,7 +176,6 @@ impl PgpKey {
     ) -> PgpKey
     where
         Sha256: Digest<OutputSize = U32> + Default,
-        Sha512: Digest<OutputSize = U64> + Default,
     {
         use crate::dalek::Signer as _;
         PgpKey::new::<Sha256, _>(
@@ -285,7 +281,7 @@ fn find_public_key_packet(data: &[u8]) -> Result<(&[u8], usize), PgpError> {
 }
 
 fn fingerprint(key_packet: &[u8]) -> [u8; 20] {
-    let mut hasher = Sha1::new();
+    let mut hasher = sha1::Sha1::new();
     hasher.update(key_packet);
     hasher.digest().bytes()
 }

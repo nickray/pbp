@@ -1,6 +1,6 @@
 use std::io::BufRead as _;
 
-fn main() {
+fn main() -> Result<(), anyhow::Error> {
     let stdin = std::io::stdin();
     let mut stdin = stdin.lock();
 
@@ -24,6 +24,8 @@ fn main() {
     }
 
     if pbp::PgpSig::from_ascii_armor(&armor).ok().is_some() {
-        println!("Valid PGP Signature");
+        Ok(println!("Valid PGP Signature"))
+    } else {
+        Err(anyhow::anyhow!("Invalid PGP Signature!"))
     }
 }

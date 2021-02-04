@@ -1,36 +1,31 @@
 use std::time::SystemTime;
 
 use pbp::{dalek::Keypair, KeyFlags, PgpKey, PgpSig, SigType};
-use rand::rngs::OsRng;
-use sha2::{Digest as _, Sha256, Sha512};
+use sha2::Sha256;
 
 const DATA: &[u8] = b"How will I ever get out of this labyrinth?";
 
 fn main() -> Result<(), anyhow::Error> {
-    let keypair = Keypair::generate(&mut OsRng);
+    let keypair = Keypair::generate(&mut rand::rngs::OsRng);
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_secs();
-    let key = PgpKey::from_dalek::<sha2::Sha256, sha2::Sha512>(
+    let public_key = PgpKey::from_dalek::<Sha256>(
         &keypair,
         KeyFlags::NONE,
         timestamp as u32,
         "withoutboats",
     );
-    let sig = PgpSig::from_dalek::<Sha256, Sha512>(
+    let sig = PgpSig::from_dalek::<Sha256>(
         &keypair,
         DATA,
-        key.fingerprint(),
+        public_key.fingerprint(),
         SigType::BinaryDocument,
         timestamp as u32,
     );
-    if sig.verify_dalek::<Sha256, Sha512, _>(&keypair.public, |hasher| {
-        hasher.update(DATA);
-    }) {
-        println!("Verified successfully.");
+    if sig.verify_dalek::<Sha256>(&keypair.public, DATA) {
+        Ok(println!("Verified successfully."))
     } else {
-        println!("Could not verify.");
+        Err(anyhow::anyhow!("Could not verify."))
     }
-
-    Ok(())
 }

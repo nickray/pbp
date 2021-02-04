@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use pbp::{dalek::Keypair, KeyFlags, PgpKey};
 use rand::rngs::OsRng;
-use sha2::{Sha256, Sha512};
+use sha2::Sha256;
 
 fn main() -> Result<(), anyhow::Error> {
     let keypair = Keypair::generate(&mut OsRng);
@@ -10,7 +10,7 @@ fn main() -> Result<(), anyhow::Error> {
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_secs();
 
-    let key = PgpKey::from_dalek::<Sha256, Sha512>(
+    let key = PgpKey::from_dalek::<Sha256>(
         &keypair,
         KeyFlags::NONE,
         timestamp as u32,

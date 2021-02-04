@@ -1,3 +1,4 @@
+// for more information on this: <https://tools.ietf.org/html/rfc4880>
 use std::ops::Range;
 use std::u16;
 
@@ -46,6 +47,7 @@ pub(crate) fn write_single_subpacket<F: Fn(&mut Vec<u8>)>(packet: &mut Vec<u8>, 
     packet[init - 1] = len as u8;
 }
 
+// MPI = multiprecision integer
 pub(crate) fn write_mpi(data: &mut Vec<u8>, mpi: &[u8]) {
     assert!(mpi.len() < (u16::MAX / 8) as usize);
     assert!(mpi.len() > 0);
@@ -53,11 +55,3 @@ pub(crate) fn write_mpi(data: &mut Vec<u8>, mpi: &[u8]) {
     data.extend(&len);
     data.extend(mpi);
 }
-
-// pub(crate) fn bigendian_u32(data: u32) -> BigEndianU32 {
-//     data.to_be_bytes()
-// }
-
-// pub(crate) fn bigendian_u16(data: u16) -> BigEndianU16 {
-//     data.to_be_bytes()
-// }
