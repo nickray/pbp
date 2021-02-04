@@ -5,9 +5,6 @@ use std::ops::Range;
 use std::str::FromStr;
 use std::u16;
 
-use digest::Digest;
-use typenum::U32;
-
 #[cfg(feature = "dalek")]
 use crate::dalek;
 
@@ -56,19 +53,13 @@ impl PgpKey {
     ///
     /// This will panic if your key is not 32 bits of data. It will not
     /// otherwise verify that your key is a valid ed25519 key.
-    pub fn new<Sha256, Signer>(
-        public_key: &[u8],
+    pub fn new(
+        public_key: &[u8; 32],
         flags: KeyFlags,
         user_id: &str,
         unix_time: u32,
-        sign: Signer,
-    ) -> PgpKey
-    where
-        Sha256: Digest<OutputSize = U32>,
-        Signer: Fn(&[u8]) -> Signature,
-    {
-        assert!(public_key.len() == 32);
-
+        sign: impl Fn(&[u8]) -> Signature,
+    ) -> PgpKey {
         let mut data = Vec::with_capacity(user_id.len() + 180);
 
         let key_packet_range = write_public_key_packet(&mut data, public_key, unix_time);
@@ -83,7 +74,7 @@ impl PgpKey {
             data
         };
 
-        let signature_packet = PgpSig::new::<Sha256, _>(
+        let signature_packet = PgpSig::new(
             &sig_data,
             fingerprint,
             SigType::PositiveCertification,
@@ -152,8 +143,8 @@ impl PgpKey {
     /// The ed25519 public key data contained in this key.
     ///
     /// This slice will be thirty-two bytes long.
-    pub fn key_data(&self) -> &[u8] {
-        &self.data[22..54]
+    pub fn key_data(&self) -> [u8; 32] {
+        self.data[22..54].try_into().unwrap()
     }
 
     /// All of the bytes in this key (including PGP metadata).
@@ -168,17 +159,14 @@ impl PgpKey {
 
     #[cfg(feature = "dalek")]
     /// Create a PgpKey from a dalek Keypair and a user_id string.
-    pub fn from_dalek<Sha256>(
+    pub fn from_dalek(
         keypair: &dalek::Keypair,
         flags: KeyFlags,
         unix_time: u32,
         user_id: &str,
-    ) -> PgpKey
-    where
-        Sha256: Digest<OutputSize = U32> + Default,
-    {
+    ) -> PgpKey {
         use crate::dalek::Signer as _;
-        PgpKey::new::<Sha256, _>(
+        PgpKey::new(
             keypair.public.as_bytes(),
             flags,
             user_id,
@@ -192,7 +180,7 @@ impl PgpKey {
     ///
     /// This will validate that the key data is a correct ed25519 public key.
     pub fn to_dalek(&self) -> Result<dalek::PublicKey, dalek::SignatureError> {
-        dalek::PublicKey::from_bytes(self.key_data())
+        dalek::PublicKey::from_bytes(&self.key_data())
     }
 }
 

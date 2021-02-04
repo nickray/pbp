@@ -3,8 +3,7 @@ use std::fmt::{self, Debug, Display};
 use std::str::FromStr;
 use std::u16;
 
-use digest::Digest;
-use typenum::U32;
+use digest::Digest as _;
 
 #[cfg(feature = "dalek")]
 use crate::dalek;
@@ -56,6 +55,12 @@ pub struct PgpSig {
 impl PgpSig {
     /// Construct a new PGP signature.
     ///
+    /// One thing to know is that "PGP Ed25519 signatures" don't contain
+    /// a normal Ed25519 signature of the data, instead the SHA-256 hash
+    /// of the data with some additional metadata is embedded in some
+    /// further metdata, which is then signed, and then there is further
+    /// metadata. "Keep it complicated, stupid!" :)
+    ///
     /// This will construct a valid OpenPGP signature using the ed25519
     /// signing algorithm & SHA-256 hashing algorithm. It will contain
     /// these hashed subpackets:
@@ -64,18 +69,14 @@ impl PgpSig {
     ///  - Whatever subpackets you pass as arguments
     ///
     /// It will contain the key id as an unhashed subpacket.
-    pub fn new<Sha256, Signer>(
+    pub fn new(
         data: &[u8],
         fingerprint: Fingerprint,
         sig_type: SigType,
         unix_time: u32,
         subpackets: &[SubPacket],
-        sign: Signer,
-    ) -> PgpSig
-    where
-        Sha256: Digest<OutputSize = U32>,
-        Signer: Fn(&[u8]) -> Signature,
-    {
+        sign: impl Fn(&[u8]) -> Signature,
+    ) -> PgpSig {
         let data = prepare_packet(2, |packet| {
             packet.push(4); // version number
             packet.push(sig_type as u8); // signature class
@@ -100,7 +101,7 @@ impl PgpSig {
             });
 
             let hash = {
-                let mut hasher = Sha256::new();
+                let mut hasher = sha2::Sha256::new();
 
                 hasher.update(data);
 
@@ -200,13 +201,12 @@ impl PgpSig {
     ///
     /// The data to be verified should be inputed by hashing it into the
     /// SHA-256 hasher using the input function.
-    pub fn verify<Sha256, Verifier>(&self, data: &[u8], verify: Verifier) -> bool
+    pub fn verify<Verifier>(&self, data: &[u8], verify: Verifier) -> bool
     where
-        Sha256: Digest<OutputSize = U32>,
         Verifier: FnOnce(&[u8], Signature) -> bool,
     {
         let hash = {
-            let mut hasher = Sha256::new();
+            let mut hasher = sha2::Sha256::new();
 
             hasher.update(data);
 
@@ -224,20 +224,23 @@ impl PgpSig {
 
     #[cfg(feature = "dalek")]
     /// Convert this signature from an ed25519-dalek signature.
-    pub fn from_dalek<Sha256>(
+    pub fn from_dalek(
         keypair: &dalek::Keypair,
         data: &[u8],
         fingerprint: Fingerprint,
         sig_type: SigType,
         timestamp: u32,
     ) -> PgpSig
-    where
-        Sha256: Digest<OutputSize = U32> + Default,
     {
         use crate::dalek::Signer as _;
-        PgpSig::new::<Sha256, _>(data, fingerprint, sig_type, timestamp, &[], |data| {
-            keypair.sign(data).to_bytes()
-        })
+        PgpSig::new(
+            data,
+            fingerprint,
+            sig_type,
+            timestamp,
+            &[],
+            |data| keypair.sign(data).to_bytes(),
+        )
     }
 
     #[cfg(feature = "dalek")]
@@ -248,12 +251,10 @@ impl PgpSig {
 
     #[cfg(feature = "dalek")]
     /// Verify this signature against an ed25519-dalek public key.
-    pub fn verify_dalek<Sha256>(&self, key: &dalek::PublicKey, data: &[u8]) -> bool
-    where
-        Sha256: Digest<OutputSize = U32> + Default,
+    pub fn verify_dalek(&self, key: &dalek::PublicKey, data: &[u8]) -> bool
     {
         use crate::dalek::Verifier as _;
-        self.verify::<Sha256, _>(data, |data, signature| {
+        self.verify::<_>(data, |data, signature| {
             let sig = dalek::Signature::new(signature);
             key.verify(data, &sig).is_ok()
         })

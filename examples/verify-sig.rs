@@ -1,7 +1,6 @@
 use std::{env, fs, path::PathBuf};
 
 use pbp::{PgpKey, PgpSig};
-use sha2::Sha256;
 
 fn main() -> Result<(), anyhow::Error> {
     let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
@@ -14,7 +13,7 @@ fn main() -> Result<(), anyhow::Error> {
     let sig = PgpSig::from_ascii_armor(&sig).unwrap();
     let public_key = PgpKey::from_ascii_armor(&public_key).unwrap();
 
-    if sig.verify_dalek::<Sha256>(&public_key.to_dalek().unwrap(), data.as_bytes()) {
+    if sig.verify_dalek(&public_key.to_dalek().unwrap(), data.as_bytes()) {
         Ok(println!("Verified signature."))
     } else {
         Err(anyhow::anyhow!("Could not verify signature."))
