@@ -1,30 +1,23 @@
-use std::fmt::{self, Display, Debug};
+use core::convert::TryInto;
+
+use std::fmt::{self, Debug, Display};
 use std::ops::Range;
 use std::str::FromStr;
 use std::u16;
 
-use byteorder::{ByteOrder, BigEndian};
-use digest::Digest;
-use sha1::Sha1;
-use typenum::U32;
-
-#[cfg(feature = "dalek")] use ed25519_dalek as dalek;
-#[cfg(feature = "dalek")] use typenum::U64;
+#[cfg(feature = "dalek")]
+use crate::dalek;
 
 use crate::ascii_armor::{ascii_armor, remove_ascii_armor};
-use crate::Base64;
 use crate::packet::*;
+use crate::Base64;
 
-use crate::{Fingerprint, Signature, KeyFlags};
-use crate::{PgpSig, SubPacket, SigType};
 use crate::PgpError;
+use crate::{Fingerprint, KeyFlags, Signature};
+use crate::{PgpSig, SigType, SubPacket};
 
 // curve identifier (curve25519)
-const CURVE: &[u8] = &[
-    0x09, 0x2b, 0x06, 0x01,
-    0x04, 0x01, 0xda, 0x47,
-    0x0f, 0x01
-];
+const CURVE: &[u8] = &[0x09, 0x2b, 0x06, 0x01, 0x04, 0x01, 0xda, 0x47, 0x0f, 0x01];
 
 /// An OpenPGP formatted ed25519 public key.
 ///
@@ -35,7 +28,7 @@ const CURVE: &[u8] = &[
 /// formatted key is expected.
 ///
 /// This type implements Display by ASCII armoring the public key data.
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct PgpKey {
     data: Vec<u8>,
 }
@@ -60,44 +53,45 @@ impl PgpKey {
     ///
     /// This will panic if your key is not 32 bits of data. It will not
     /// otherwise verify that your key is a valid ed25519 key.
-    pub fn new<Sha256, F>(
-        key: &[u8],
+    pub fn new(
+        public_key: &[u8; 32],
         flags: KeyFlags,
         user_id: &str,
         unix_time: u32,
-        sign: F,
-    ) -> PgpKey where
-        Sha256: Digest<OutputSize = U32>,
-        F: Fn(&[u8]) -> Signature,
-    {
-        assert!(key.len() == 32);
-
+        sign: impl Fn(&[u8]) -> Signature,
+    ) -> PgpKey {
         let mut data = Vec::with_capacity(user_id.len() + 180);
 
-        let key_packet_range = write_public_key_packet(&mut data, key, unix_time);
+        let key_packet_range = write_public_key_packet(&mut data, public_key, unix_time);
         let fingerprint = fingerprint(&data[key_packet_range.clone()]);
         write_user_id_packet(&mut data, user_id);
 
         let sig_data = {
             let mut data = Vec::from(&data[key_packet_range]);
             data.extend(&[0xb4]);
-            data.extend(&bigendian_u32(user_id.len() as u32));
+            data.extend(&(user_id.len() as u32).to_be_bytes());
             data.extend(user_id.as_bytes());
             data
         };
 
-        let signature_packet = PgpSig::new::<Sha256, _>(
+        let signature_packet = PgpSig::new(
             &sig_data,
             fingerprint,
             SigType::PositiveCertification,
             unix_time,
             &[
-                SubPacket { tag: 27, data: &[flags.bits()] },
-                SubPacket { tag: 23, data: &[0x80] },
+                SubPacket {
+                    tag: 27,
+                    data: &[flags.bits()],
+                },
+                SubPacket {
+                    tag: 23,
+                    data: &[0x80],
+                },
             ],
             sign,
         );
-        
+
         data.extend(signature_packet.as_bytes());
 
         PgpKey { data }
@@ -120,31 +114,37 @@ impl PgpKey {
         if !is_ed25519_valid(packet_data) {
             return Err(PgpError::UnsupportedPublicKeyPacket);
         }
-        
+
         // convert public key packet to the old style header,
         // two byte length. All methods on PgpKey assume the
         // public key is in that format (e.g. the fingerprint
         // method).
-        let data = if bytes[0] != 0x99 { 
+        let data = if bytes[0] != 0x99 {
             let mut packet = prepare_packet(6, |packet| packet.extend(packet_data));
             packet.extend(&bytes[end..]);
             packet
-        } else { bytes.to_owned() };
+        } else {
+            bytes.to_owned()
+        };
 
         Ok(PgpKey { data })
     }
 
     /// Construct a PgpKey from an ASCII armored string.
     pub fn from_ascii_armor(string: &str) -> Result<PgpKey, PgpError> {
-        let data = remove_ascii_armor(string, "BEGIN PGP PUBLIC KEY BLOCK", "END PGP PUBLIC KEY BLOCK")?;
+        let data = remove_ascii_armor(
+            string,
+            "BEGIN PGP PUBLIC KEY BLOCK",
+            "END PGP PUBLIC KEY BLOCK",
+        )?;
         PgpKey::from_bytes(&data)
     }
 
     /// The ed25519 public key data contained in this key.
     ///
     /// This slice will be thirty-two bytes long.
-    pub fn key_data(&self) -> &[u8] {
-        &self.data[22..54]
+    pub fn key_data(&self) -> [u8; 32] {
+        self.data[22..54].try_into().unwrap()
     }
 
     /// All of the bytes in this key (including PGP metadata).
@@ -159,14 +159,20 @@ impl PgpKey {
 
     #[cfg(feature = "dalek")]
     /// Create a PgpKey from a dalek Keypair and a user_id string.
-    pub fn from_dalek<Sha256, Sha512>(keypair: &dalek::Keypair, flags: KeyFlags, unix_time: u32, user_id: &str) -> PgpKey
-    where
-        Sha256: Digest<OutputSize = U32>,
-        Sha512: Digest<OutputSize = U64>,
-    {
-        PgpKey::new::<Sha256, _>(keypair.public.as_bytes(), flags, user_id, unix_time, |data| {
-            keypair.sign::<Sha512>(data).to_bytes()
-        })
+    pub fn from_dalek(
+        keypair: &dalek::Keypair,
+        flags: KeyFlags,
+        unix_time: u32,
+        user_id: &str,
+    ) -> PgpKey {
+        use crate::dalek::Signer as _;
+        PgpKey::new(
+            keypair.public.as_bytes(),
+            flags,
+            user_id,
+            unix_time,
+            |data| keypair.sign(data).to_bytes(),
+        )
     }
 
     #[cfg(feature = "dalek")]
@@ -174,13 +180,15 @@ impl PgpKey {
     ///
     /// This will validate that the key data is a correct ed25519 public key.
     pub fn to_dalek(&self) -> Result<dalek::PublicKey, dalek::SignatureError> {
-        dalek::PublicKey::from_bytes(self.key_data())
+        dalek::PublicKey::from_bytes(&self.key_data())
     }
 }
 
 impl Debug for PgpKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("PgpKey").field("key", &Base64(&self.data[..])).finish()
+        f.debug_struct("PgpKey")
+            .field("key", &Base64(&self.data[..]))
+            .finish()
     }
 }
 
@@ -205,7 +213,7 @@ impl FromStr for PgpKey {
 fn write_public_key_packet(data: &mut Vec<u8>, key: &[u8], unix_time: u32) -> Range<usize> {
     write_packet(data, 6, |packet| {
         packet.push(4); // packet version #4
-        packet.extend(&bigendian_u32(unix_time));
+        packet.extend(&unix_time.to_be_bytes());
         packet.push(22); // algorithm id #22 (edDSA)
 
         packet.extend(CURVE);
@@ -227,31 +235,41 @@ fn write_user_id_packet(data: &mut Vec<u8>, user_id: &str) -> Range<usize> {
 // will return the data of that public key packet.
 fn find_public_key_packet(data: &[u8]) -> Result<(&[u8], usize), PgpError> {
     let (init, len) = match data.first() {
-        Some(&0x98)  => {
-            if data.len() < 2 { return Err(PgpError::InvalidPacketHeader) }
+        Some(&0x98) => {
+            if data.len() < 2 {
+                return Err(PgpError::InvalidPacketHeader);
+            }
             let len = data[1] as usize;
             (2, len)
         }
-        Some(&0x99)  => {
-            if data.len() < 3 { return Err(PgpError::InvalidPacketHeader) }
-            let len = BigEndian::read_u16(&data[1..3]) as usize;
+        Some(&0x99) => {
+            if data.len() < 3 {
+                return Err(PgpError::InvalidPacketHeader);
+            }
+            let len = u16::from_be_bytes(data[1..3].try_into().unwrap()) as usize;
             (3, len)
         }
-        Some(&0x9a)  => {
-            if data.len() < 5 { return Err(PgpError::InvalidPacketHeader) }
-            let len = BigEndian::read_u32(&data[1..5]) as usize;
-            if len > u16::MAX as usize { return Err(PgpError::UnsupportedPacketLength) }
+        Some(&0x9a) => {
+            if data.len() < 5 {
+                return Err(PgpError::InvalidPacketHeader);
+            }
+            let len = u32::from_be_bytes(data[1..5].try_into().unwrap()) as usize;
+            if len > u16::MAX as usize {
+                return Err(PgpError::UnsupportedPacketLength);
+            }
             (5, len)
         }
-        _           => return Err(PgpError::UnsupportedPacketLength)
+        _ => return Err(PgpError::UnsupportedPacketLength),
     };
     let end = init + len;
-    if data.len() < end { return Err(PgpError::InvalidPacketHeader) }
+    if data.len() < end {
+        return Err(PgpError::InvalidPacketHeader);
+    }
     Ok((&data[init..end], end))
 }
 
 fn fingerprint(key_packet: &[u8]) -> [u8; 20] {
-    let mut hasher = Sha1::new();
+    let mut hasher = sha1::Sha1::new();
     hasher.update(key_packet);
     hasher.digest().bytes()
 }

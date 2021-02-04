@@ -1,17 +1,21 @@
-extern crate rand;
-extern crate sha2;
-extern crate ed25519_dalek as dalek;
-extern crate pbp;
+use std::time::SystemTime;
 
-use rand::OsRng;
-use sha2::{Sha256, Sha512};
-use dalek::Keypair;
-use pbp::{PgpKey, KeyFlags};
+use pbp::{dalek::Keypair, KeyFlags, PgpKey};
+use rand::rngs::OsRng;
 
-fn main() {
-    let mut cspring = OsRng::new().unwrap();
-    let keypair = Keypair::generate::<Sha512>(&mut cspring);
+fn main() -> Result<(), anyhow::Error> {
+    let keypair = Keypair::generate(&mut OsRng);
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs();
 
-    let key = PgpKey::from_dalek::<Sha256, Sha512>(&keypair, KeyFlags::NONE, "withoutboats");
+    let key = PgpKey::from_dalek(
+        &keypair,
+        KeyFlags::NONE,
+        timestamp as u32,
+        "withoutboats",
+    );
     println!("{}", key);
+
+    Ok(())
 }

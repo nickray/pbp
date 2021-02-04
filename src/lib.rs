@@ -7,14 +7,13 @@
 //! PGP formatted. If you don't want to use a heavyweight dependency like gpg,
 //! this library supports only the minimal necessary components of the PGP
 //! format to transmit your keys and signatures.
-#![feature(rust_2018_preview)]
+//!
+//! ## Note
+//! This library is a fork of the `pbp` library.
 #![deny(missing_docs, missing_debug_implementations)]
 
-#[macro_use] extern crate failure;
-#[macro_use] extern crate bitflags;
-
 #[cfg(feature = "dalek")]
-extern crate ed25519_dalek as dalek;
+pub use ed25519_dalek as dalek;
 
 mod ascii_armor;
 mod packet;
@@ -23,14 +22,14 @@ mod key;
 mod sig;
 
 pub use crate::key::PgpKey;
-pub use crate::sig::{PgpSig, SubPacket, SigType};
+pub use crate::sig::{PgpSig, SigType, SubPacket};
 
 /// An OpenPGP public key fingerprint.
 pub type Fingerprint = [u8; 20];
 /// An ed25519 signature.
 pub type Signature = [u8; 64];
 
-bitflags! {
+bitflags::bitflags! {
     /// The key flags assigned to this key.
     pub struct KeyFlags: u8 {
         /// No key flags.
@@ -49,25 +48,25 @@ bitflags! {
 }
 
 /// An error returned while attempting to parse a PGP signature or public key.
-#[derive(Fail, Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PgpError {
     /// Invalid ASCII armor format
-    #[fail(display = "Invalid ASCII armor format")]
+    #[error("Invalid ASCII armor format")]
     InvalidAsciiArmor,
     /// Packet header incorrectly formatted
-    #[fail(display = "Packet header incorrectly formatted")]
+    #[error("Packet header incorrectly formatted")]
     InvalidPacketHeader,
     /// Unsupported packet length format
-    #[fail(display = "Unsupported packet length format")]
+    #[error("Unsupported packet length format")]
     UnsupportedPacketLength,
     /// Unsupported form of signature packet
-    #[fail(display = "Unsupported form of signature packet")]
+    #[error("Unsupported form of signature packet")]
     UnsupportedSignaturePacket,
     /// First hashed subpacket of signature must be the key fingerprint
-    #[fail(display = "First hashed subpacket of signature must be the key fingerprint")]
+    #[error("First hashed subpacket of signature must be the key fingerprint")]
     MissingFingerprintSubpacket,
     /// Unsupported form of public key packet
-    #[fail(display = "Unsupported form of public key packet")]
+    #[error("Unsupported form of public key packet")]
     UnsupportedPublicKeyPacket,
 }
 
@@ -79,4 +78,3 @@ impl<'a> std::fmt::Debug for Base64<'a> {
         f.write_str(&base64::encode(self.0))
     }
 }
-
